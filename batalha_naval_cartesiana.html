@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batalha Naval no Plano Cartesiano</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Roboto Mono', monospace;
+            background-color: #0f172a; /* slate-900 */
+            color: #e2e8f0; /* slate-200 */
+            margin: 0;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem;
+            padding: 2rem;
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        @media (min-width: 1024px) {
+            .game-container {
+                flex-direction: row;
+                justify-content: center;
+                align-items: flex-start;
+            }
+        }
+
+        .board-wrapper {
+            position: relative;
+            background-color: #1e293b; /* slate-800 */
+            padding: 1rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        canvas {
+            background-color: #020617; /* slate-950 */
+            border: 2px solid #334155; /* slate-700 */
+            border-radius: 0.5rem;
+            cursor: crosshair;
+            touch-action: none; /* Prevent scrolling when interacting with canvas */
+        }
+
+        .controls {
+            background-color: #1e293b;
+            padding: 1.5rem;
+            border-radius: 1rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 600px;
+            text-align: center;
+        }
+
+        button {
+            transition: all 0.2s ease-in-out;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            filter: brightness(1.1);
+        }
+
+        button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .ship-preview {
+            display: flex;
+            gap: 4px;
+            margin: 1rem 0;
+            justify-content: center;
+        }
+        
+        .ship-cell {
+            width: 20px;
+            height: 20px;
+            background-color: #3b82f6; /* blue-500 */
+            border: 1px solid #1d4ed8;
+        }
+
+        .message-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: bold;
+            color: white;
+            z-index: 10;
+            border-radius: 1rem;
+            display: none;
+            text-align: center;
+            padding: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <header class="w-full text-center py-6 bg-slate-900 border-b border-slate-700 shadow-md">
+        <h1 class="text-3xl md:text-4xl font-bold text-blue-400">Batalha Naval no Plano Cartesiano</h1>
+        <p class="text-slate-400 mt-2 text-sm md:text-base">Posicione seus navios e ataque usando coordenadas (x, y)</p>
+    </header>
+
+    <main class="flex-grow flex flex-col items-center justify-start pt-6">
+        
+        <!-- Controls area -->
+        <div id="setupControls" class="controls">
+            <h2 class="text-xl font-bold text-white mb-2">Fase de Preparação</h2>
+            <p id="setupInstructions" class="text-slate-300 mb-4">Posicione sua frota no plano.</p>
+            
+            <div class="flex flex-col items-center mb-4">
+                <span class="text-sm text-slate-400">Navio atual: <span id="currentShipName" class="font-bold text-white">Porta-aviões (5)</span></span>
+                <div id="shipPreview" class="ship-preview">
+                    <!-- Added via JS -->
+                </div>
+            </div>
+
+            <div class="flex gap-4 justify-center mb-4">
+                <button id="rotateBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+                        <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+                    </svg>
+                    Rotacionar (Atual: <span id="orientationText">X</span>)
+                </button>
+                <button id="randomizeBtn" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded">
+                    Posição Aleatória
+                </button>
+            </div>
+            
+            <button id="startGameBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg text-lg w-full disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                Iniciar Batalha!
+            </button>
+        </div>
+
+        <div id="gameStatus" class="controls hidden">
+            <h2 id="statusText" class="text-2xl font-bold text-blue-400">Seu Turno!</h2>
+            <p class="text-slate-300 mt-2">Clique no quadrante do inimigo para atacar uma coordenada (x,y).</p>
+            <div class="flex justify-between mt-4 text-sm px-4">
+                <div class="text-left">
+                    <span class="text-blue-400 font-bold">Você:</span> <span id="playerHits">0</span> acertos
+                </div>
+                <div class="text-right">
+                    <span class="text-red-400 font-bold">Inimigo:</span> <span id="enemyHits">0</span> acertos
+                </div>
+            </div>
+            <button id="restartBtn" class="mt-4 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded hidden w-full">
+                Jogar Novamente
+            </button>
+        </div>
+
+        <!-- Game Boards -->
+        <div class="game-container">
+            <!-- Player Board -->
+            <div class="board-wrapper">
+                <h3 class="text-lg font-bold mb-2 text-blue-300">Seu Plano Cartesiano</h3>
+                <canvas id="playerCanvas" width="400" height="400"></canvas>
+                <div id="playerOverlay" class="message-overlay">Você Perdeu!</div>
+            </div>
+
+            <!-- Enemy Board -->
+            <div class="board-wrapper">
+                <h3 class="text-lg font-bold mb-2 text-red-400">Plano Inimigo</h3>
+                <canvas id="enemyCanvas" width="400" height="400"></canvas>
+                <div id="enemyOverlay" class="message-overlay">Você Venceu!</div>
+            </div>
+        </div>
+        
+        <div class="mb-8 text-slate-500 text-sm max-w-2xl text-center px-4">
+            <p><strong>Regras:</strong> O tabuleiro varia de -5 a 5 nos eixos X e Y. As coordenadas são dadas na intersecção das linhas. Os navios são posicionados sobre as linhas, paralelos aos eixos. Acabe com a frota inimiga!</p>
+        </div>
+    </main>
+
+    <script>
+        // --- Constants & Configuration ---
+        // Cartesian plane from -5 to 5 means 11 coordinates (-5, -4, ... 0, ... 4, 5)
+        const GRID_MIN = -5;
+        const GRID_MAX = 5;
+        const GRID_SIZE = GRID_MAX - GRID_MIN + 1; // 11
+        const CELL_PIXELS = 35; // Size of each grid cell in pixels
+        const MARGIN = 30; // Margin around the grid for axes labels
+        const CANVAS_SIZE = (GRID_SIZE - 1) * CELL_PIXELS + 2 * MARGIN; // Intersections are what matter
+
+        const SHIPS_CONFIG = [
+            { name: "Porta-aviões", size: 5, color: "#3b82f6" }, // blue-500
+            { name: "Encouraçado", size: 4, color: "#10b981" }, // emerald-500
+            { name: "Cruzador", size: 3, color: "#f59e0b" },    // amber-500
+            { name: "Submarino", size: 3, color: "#8b5cf6" },   // violet-500
+            { name: "Contratorpedeiro", size: 2, color: "#ec4899" } // pink-500
+        ];
+
+        // --- State ---
+        let gameState = 'SETUP'; // 'SETUP', 'PLAYER_TURN', 'ENEMY_TURN', 'GAME_OVER'
+        let currentShipIndex = 0;
+        let isHorizontal = true; // true = parallel to X, false = parallel to Y
+        
+        // Boards store data at Cartesian coordinates mapped to array indices
+        // Map (x, y) to array [x_index][y_index] where index = value - GRID_MIN
+        // e.g., (-5, -5) -> [0][0], (0,0) -> [5][5]
+        
+        class Board {
+            constructor() {
+                this.ships = []; // List of placed ships
+                this.shots = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(0)); 
+                // 0: empty, 1: miss, 2: hit
+                this.shipCells = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null));
+                // stores reference to ship object if present at coordinate
+            }
+
+            // Convert Cartesian (x,y) to Array index (i, j)
+            toIndex(x, y) {
+                return { i: x - GRID_MIN, j: y - GRID_MIN };
+            }
+
+            // Convert Array index to Cartesian
+            toCoord(i, j) {
+                return { x: i + GRID_MIN, y: j + GRID_MIN };
+            }
+
+            isValidCoord(x, y) {
+                return x >= GRID_MIN && x <= GRID_MAX && y >= GRID_MIN && y <= GRID_MAX;
+            }
+
+            canPlaceShip(x, y, size, horizontal) {
+                for (let k = 0; k < size; k++) {
+                    let cx = horizontal ? x + k : x;
+                    let cy = horizontal ? y : y + k;
+                    
+                    if (!this.isValidCoord(cx, cy)) return false;
+                    
+                    let {i, j} = this.toIndex(cx, cy);
+                    if (this.shipCells[i][j] !== null) return false;
+                }
+                return true;
+            }
+
+            placeShip(x, y, size, horizontal, name, color) {
+                if (!this.canPlaceShip(x, y, size, horizontal)) return false;
+
+                const ship = { name, size, horizontal, x, y, color, hits: 0, coords: [] };
+                
+                for (let k = 0; k < size; k++) {
+                    let cx = horizontal ? x + k : x;
+                    let cy = horizontal ? y : y + k;
+                    let {i, j} = this.toIndex(cx, cy);
+                    
+                    this.shipCells[i][j] = ship;
+                    ship.coords.push({x: cx, y: cy});
+                }
+                
+                this.ships.push(ship);
+                return true;
+            }
+
+            receiveShot(x, y) {
+                if (!this.isValidCoord(x, y)) return null;
+                let {i, j} = this.toIndex(x, y);
+                
+                // Already shot here
+                if (this.shots[i][j] !== 0) return 'ALREADY_SHOT';
+
+                let ship = this.shipCells[i][j];
+                if (ship) {
+                    this.shots[i][j] = 2; // Hit
+                    ship.hits++;
+                    return { result: 'HIT', shipSunk: ship.hits === ship.size ? ship : null };
+                } else {
+                    this.shots[i][j] = 1; // Miss
+                    return { result: 'MISS' };
+                }
+            }
+
+            allShipsSunk() {
+                return this.ships.length > 0 && this.ships.every(s => s.hits === s.size);
+            }
+            
+            getHitsCount() {
+                let count = 0;
+                for(let i=0; i<GRID_SIZE; i++){
+                    for(let j=0; j<GRID_SIZE; j++){
+                        if(this.shots[i][j] === 2) count++;
+                    }
+                }
+                return count;
+            }
+        }
+
+        let playerBoard = new Board();
+        let enemyBoard = new Board();
+
+        // --- DOM Elements ---
+        const playerCanvas = document.getElementById('playerCanvas');
+        const enemyCanvas = document.getElementById('enemyCanvas');
+        const ctxPlayer = playerCanvas.getContext('2d');
+        const ctxEnemy = enemyCanvas.getContext('2d');
+        
+        const setupControls = document.getElementById('setupControls');
+        const gameStatus = document.getElementById('gameStatus');
+        const rotateBtn = document.getElementById('rotateBtn');
+        const randomizeBtn = document.getElementById('randomizeBtn');
+        const startGameBtn = document.getElementById('startGameBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const orientationText = document.getElementById('orientationText');
+        const currentShipName = document.getElementById('currentShipName');
+        const shipPreview = document.getElementById('shipPreview');
+        const setupInstructions = document.getElementById('setupInstructions');
+        const statusText = document.getElementById('statusText');
+        
+        
+        // Resize canvases to logical size
+        playerCanvas.width = CANVAS_SIZE;
+        playerCanvas.height = CANVAS_SIZE;
+        enemyCanvas.width = CANVAS_SIZE;
+        enemyCanvas.height = CANVAS_SIZE;
+
+        // Convert Cartesian (x,y) to Canvas (px, py)
+        // In Cartesian, y goes UP. In Canvas, y goes DOWN.
+        // Also we draw on the intersections.
+        function toCanvasCoord(x, y) {
+            const px = MARGIN + (x - GRID_MIN) * CELL_PIXELS;
+            const py = CANVAS_SIZE - MARGIN - (y - GRID_MIN) * CELL_PIXELS;
+            return { px, py };
+        }
+        
+        // Convert Canvas (px, py) to nearest Cartesian (x,y)
+        function toCartesianCoord(px, py) {
+            // Find nearest intersection
+            let rx = Math.round((px - MARGIN) / CELL_PIXELS);
+            let ry = Math.round((CANVAS_SIZE - MARGIN - py) / CELL_PIXELS);
+            
+            return {
+                x: rx + GRID_MIN,
+                y: ry + GRID_MIN
+            };
+        }
+
+        function drawGrid(ctx, isEnemy) {
+            ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+            
+            ctx.strokeStyle = '#334155'; // slate-700
+            ctx.lineWidth = 1;
+
+            // Draw grid lines
+            for (let i = 0; i < GRID_SIZE; i++) {
+                // Vertical lines
+                let xPx = MARGIN + i * CELL_PIXELS;
+                ctx.beginPath();
+                ctx.moveTo(xPx, MARGIN);
+                ctx.lineTo(xPx, CANVAS_SIZE - MARGIN);
+                ctx.stroke();
+
+                // Horizontal lines
+                let yPx = MARGIN + i * CELL_PIXELS;
+                ctx.beginPath();
+                ctx.moveTo(MARGIN, yPx);
+                ctx.lineTo(CANVAS_SIZE - MARGIN, yPx);
+                ctx.stroke();
+            }
+
+            // Draw Axes
+            ctx.strokeStyle = '#94a3b8'; // slate-400
+            ctx.lineWidth = 2;
+            
+            let origin = toCanvasCoord(0, 0);
+            
+            // X Axis
+            ctx.beginPath();
+            ctx.moveTo(MARGIN - 10, origin.py);
+            ctx.lineTo(CANVAS_SIZE - MARGIN + 10, origin.py);
+            ctx.stroke();
+            
+            // Y Axis
+            ctx.beginPath();
+            ctx.moveTo(origin.px, MARGIN - 10);
+            ctx.lineTo(origin.px, CANVAS_SIZE - MARGIN + 10);
+            ctx.stroke();
+
+            // Draw labels
+            ctx.fillStyle = '#64748b'; // slate-500
+            ctx.font = '10px Roboto Mono';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            for (let x = GRID_MIN; x <= GRID_MAX; x++) {
+                let pos = toCanvasCoord(x, 0);
+                if (x !== 0) {
+                    ctx.fillText(x, pos.px, pos.py + 12);
+                }
+            }
+            for (let y = GRID_MIN; y <= GRID_MAX; y++) {
+                let pos = toCanvasCoord(0, y);
+                if (y !== 0) {
+                    ctx.fillText(y, pos.px - 15, pos.py);
+                }
+            }
+            // Origin label
+            ctx.fillText("0", origin.px - 10, origin.py + 12);
+            
+            // Axis letters
+            ctx.fillStyle = '#cbd5e1'; // slate-300
+            ctx.font = 'bold 12px Roboto Mono';
+            ctx.fillText("X", CANVAS_SIZE - MARGIN + 15, origin.py);
+            ctx.fillText("Y", origin.px, MARGIN - 20);
+        }
+
+        function drawShip(ctx, ship, isSunk = false) {
+            const lineThickness = 6;
+            ctx.strokeStyle = isSunk ? '#475569' : ship.color; // Dim if sunk
+            ctx.lineWidth = lineThickness;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            ctx.beginPath();
+            
+            let start = toCanvasCoord(ship.x, ship.y);
+            let endX = ship.horizontal ? ship.x + ship.size - 1 : ship.x;
+            let endY = ship.horizontal ? ship.y : ship.y + ship.size - 1;
+            let end = toCanvasCoord(endX, endY);
+            
+            ctx.moveTo(start.px, start.py);
+            ctx.lineTo(end.px, end.py);
+            ctx.stroke();
+            
+            // Draw nodes at intersections
+            ctx.fillStyle = isSunk ? '#1e293b' : '#0f172a';
+            for (let p of ship.coords) {
+                let pos = toCanvasCoord(p.x, p.y);
+                ctx.beginPath();
+                ctx.arc(pos.px, pos.py, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            }
+        }
+
+        function drawMarks(ctx, board, hideUnsunks = false) {
+            for (let i = 0; i < GRID_SIZE; i++) {
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    let mark = board.shots[i][j];
+                    if (mark === 0) continue;
+
+                    let coord = board.toCoord(i, j);
+                    let pos = toCanvasCoord(coord.x, coord.y);
+
+                    if (mark === 1) {
+                        // Miss: small white circle
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                        ctx.beginPath();
+                        ctx.arc(pos.px, pos.py, 4, 0, Math.PI * 2);
+                        ctx.fill();
+                    } else if (mark === 2) {
+                        // Hit: Red X
+                        ctx.strokeStyle = '#ef4444'; // red-500
+                        ctx.lineWidth = 3;
+                        let s = 6;
+                        ctx.beginPath();
+                        ctx.moveTo(pos.px - s, pos.py - s);
+                        ctx.lineTo(pos.px + s, pos.py + s);
+                        ctx.moveTo(pos.px + s, pos.py - s);
+                        ctx.lineTo(pos.px - s, pos.py + s);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        // Mouse hover preview during setup
+        let hoverCoord = null;
+
+        function renderAll() {
+            // Render Player Board
+            drawGrid(ctxPlayer, false);
+            playerBoard.ships.forEach(ship => drawShip(ctxPlayer, ship));
+            drawMarks(ctxPlayer, playerBoard);
+            
+            // Draw placement preview
+            if (gameState === 'SETUP' && hoverCoord && currentShipIndex < SHIPS_CONFIG.length) {
+                const conf = SHIPS_CONFIG[currentShipIndex];
+                const canPlace = playerBoard.canPlaceShip(hoverCoord.x, hoverCoord.y, conf.size, isHorizontal);
+                
+                ctxPlayer.strokeStyle = canPlace ? 'rgba(74, 222, 128, 0.8)' : 'rgba(248, 113, 113, 0.8)'; // green/red
+                ctxPlayer.lineWidth = 6;
+                ctxPlayer.lineCap = 'round';
+                
+                ctxPlayer.beginPath();
+                let start = toCanvasCoord(hoverCoord.x, hoverCoord.y);
+                let endX = isHorizontal ? hoverCoord.x + conf.size - 1 : hoverCoord.x;
+                let endY = isHorizontal ? hoverCoord.y : hoverCoord.y + conf.size - 1;
+                
+                // Clamp end rendering for preview so it doesn't draw off canvas wildly
+                let drawEndX = Math.min(Math.max(endX, GRID_MIN), GRID_MAX);
+                let drawEndY = Math.min(Math.max(endY, GRID_MIN), GRID_MAX);
+                let end = toCanvasCoord(drawEndX, drawEndY);
+
+                ctxPlayer.moveTo(start.px, start.py);
+                ctxPlayer.lineTo(end.px, end.py);
+                ctxPlayer.stroke();
+            }
+
+            // Render Enemy Board
+            drawGrid(ctxEnemy, true);
+            if (gameState === 'GAME_OVER') {
+                // Show all enemy ships if game over
+                enemyBoard.ships.forEach(ship => drawShip(ctxEnemy, ship, true));
+            } else {
+                // Only show sunk ships
+                enemyBoard.ships.forEach(ship => {
+                    if (ship.hits === ship.size) {
+                        drawShip(ctxEnemy, ship, true);
+                    }
+                });
+            }
+            drawMarks(ctxEnemy, enemyBoard);
+            
+            // Draw hover crosshair on enemy board during play
+            if (gameState === 'PLAYER_TURN' && hoverCoord) {
+                let pos = toCanvasCoord(hoverCoord.x, hoverCoord.y);
+                let {i, j} = enemyBoard.toIndex(hoverCoord.x, hoverCoord.y);
+                
+                if (enemyBoard.isValidCoord(hoverCoord.x, hoverCoord.y) && enemyBoard.shots[i][j] === 0) {
+                    ctxEnemy.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                    ctxEnemy.lineWidth = 2;
+                    let s = 10;
+                    ctxEnemy.beginPath();
+                    ctxEnemy.moveTo(pos.px - s, pos.py);
+                    ctxEnemy.lineTo(pos.px + s, pos.py);
+                    ctxEnemy.moveTo(pos.px, pos.py - s);
+                    ctxEnemy.lineTo(pos.px, pos.py + s);
+                    ctxEnemy.stroke();
+                    
+                    // coordinate text
+                    ctxEnemy.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                    ctxEnemy.font = '12px Roboto Mono';
+                    ctxEnemy.fillText(`(${hoverCoord.x}, ${hoverCoord.y})`, pos.px + 20, pos.py - 10);
+                }
+            }
+        }
+
+        
+        function updateSetupUI() {
+            if (currentShipIndex < SHIPS_CONFIG.length) {
+                const conf = SHIPS_CONFIG[currentShipIndex];
+                currentShipName.textContent = `${conf.name} (${conf.size})`;
+                currentShipName.style.color = conf.color;
+                
+                // Update preview blocks
+                shipPreview.innerHTML = '';
+                shipPreview.style.flexDirection = isHorizontal ? 'row' : 'column';
+                for(let i=0; i<conf.size; i++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'ship-cell';
+                    cell.style.backgroundColor = conf.color;
+                    shipPreview.appendChild(cell);
+                }
+            } else {
+                setupInstructions.textContent = "Toda a frota posicionada!";
+                currentShipName.parentElement.style.display = 'none';
+                shipPreview.style.display = 'none';
+                rotateBtn.style.display = 'none';
+                randomizeBtn.style.display = 'none';
+                startGameBtn.disabled = false;
+                startGameBtn.classList.add('animate-pulse');
+            }
+        }
+
+        rotateBtn.addEventListener('click', () => {
+            isHorizontal = !isHorizontal;
+            orientationText.textContent = isHorizontal ? "Eixo X" : "Eixo Y";
+            updateSetupUI();
+            renderAll();
+        });
+
+        function placeRandomly(board) {
+            board.ships = [];
+            board.shipCells = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null));
+            
+            for (let conf of SHIPS_CONFIG) {
+                let placed = false;
+                while (!placed) {
+                    let x = Math.floor(Math.random() * GRID_SIZE) + GRID_MIN;
+                    let y = Math.floor(Math.random() * GRID_SIZE) + GRID_MIN;
+                    let horiz = Math.random() > 0.5;
+                    placed = board.placeShip(x, y, conf.size, horiz, conf.name, conf.color);
+                }
+            }
+        }
+
+        randomizeBtn.addEventListener('click', () => {
+            placeRandomly(playerBoard);
+            currentShipIndex = SHIPS_CONFIG.length;
+            updateSetupUI();
+            renderAll();
+        });
+
+        // Event listeners for Player Canvas (Setup phase)
+        playerCanvas.addEventListener('mousemove', (e) => {
+            if (gameState !== 'SETUP') return;
+            const rect = playerCanvas.getBoundingClientRect();
+            // Need to account for potential scaling
+            const scaleX = playerCanvas.width / rect.width;
+            const scaleY = playerCanvas.height / rect.height;
+            const px = (e.clientX - rect.left) * scaleX;
+            const py = (e.clientY - rect.top) * scaleY;
+            
+            const coord = toCartesianCoord(px, py);
+            
+            if (coord.x !== hoverCoord?.x || coord.y !== hoverCoord?.y) {
+                hoverCoord = coord;
+                renderAll();
+            }
+        });
+
+        playerCanvas.addEventListener('mouseleave', () => {
+            hoverCoord = null;
+            renderAll();
+        });
+
+        playerCanvas.addEventListener('click', (e) => {
+            if (gameState !== 'SETUP' || currentShipIndex >= SHIPS_CONFIG.length) return;
+            if (!hoverCoord) return;
+
+            const conf = SHIPS_CONFIG[currentShipIndex];
+            if (playerBoard.placeShip(hoverCoord.x, hoverCoord.y, conf.size, isHorizontal, conf.name, conf.color)) {
+                currentShipIndex++;
+                updateSetupUI();
+                renderAll();
+            }
+        });
+
+
+        startGameBtn.addEventListener('click', () => {
+            gameState = 'PLAYER_TURN';
+            setupControls.classList.add('hidden');
+            gameStatus.classList.remove('hidden');
+            
+            // Generate enemy board
+            placeRandomly(enemyBoard);
+            
+            statusText.textContent = "Sua vez! Atire!";
+            statusText.className = "text-2xl font-bold text-blue-400";
+            
+            hoverCoord = null;
+            renderAll();
+        });
+
+        // Event listeners for Enemy Canvas (Play phase)
+        enemyCanvas.addEventListener('mousemove', (e) => {
+            if (gameState !== 'PLAYER_TURN') {
+                hoverCoord = null;
+                return;
+            }
+            const rect = enemyCanvas.getBoundingClientRect();
+            const scaleX = enemyCanvas.width / rect.width;
+            const scaleY = enemyCanvas.height / rect.height;
+            const px = (e.clientX - rect.left) * scaleX;
+            const py = (e.clientY - rect.top) * scaleY;
+            
+            const coord = toCartesianCoord(px, py);
+            
+            // Only update if inside logical bounds
+            if (enemyBoard.isValidCoord(coord.x, coord.y)) {
+                if (!hoverCoord || coord.x !== hoverCoord.x || coord.y !== hoverCoord.y) {
+                    hoverCoord = coord;
+                    renderAll();
+                }
+            } else {
+                hoverCoord = null;
+                renderAll();
+            }
+        });
+
+        enemyCanvas.addEventListener('mouseleave', () => {
+            hoverCoord = null;
+            renderAll();
+        });
+
+        enemyCanvas.addEventListener('click', (e) => {
+            if (gameState !== 'PLAYER_TURN' || !hoverCoord) return;
+
+            const result = enemyBoard.receiveShot(hoverCoord.x, hoverCoord.y);
+            
+            if (result === 'ALREADY_SHOT') return; // Do nothing if already clicked
+
+            updateScore();
+            renderAll();
+
+            if (result.result === 'HIT') {
+                // Keep turn if hit, but check win
+                if (enemyBoard.allShipsSunk()) {
+                    endGame(true);
+                } else {
+                    statusText.textContent = "Acertou! Jogue novamente.";
+                    statusText.className = "text-2xl font-bold text-green-400";
+                    if(result.shipSunk) {
+                        statusText.textContent += ` Afundou um ${result.shipSunk.name}!`;
+                    }
+                }
+            } else {
+                // Miss -> Enemy turn
+                gameState = 'ENEMY_TURN';
+                hoverCoord = null;
+                statusText.textContent = "Água! Turno do Inimigo...";
+                statusText.className = "text-2xl font-bold text-red-400";
+                renderAll(); // clear crosshair
+                
+                setTimeout(enemyTurn, 800 + Math.random() * 500); // Delay for realism
+            }
+        });
+
+        // Simple Enemy AI
+        let enemyMemory = {
+            hits: [], // Stack of hits to investigate
+            direction: null // Try to find alignment
+        };
+
+        function enemyTurn() {
+            if (gameState !== 'ENEMY_TURN') return;
+
+            let x, y;
+            let i, j;
+            let searching = true;
+            
+            // Dumb AI: Random hunt until valid empty spot found.
+            // A smarter AI would use the memory to target adjacent cells, but random is fine for this example.
+            while (searching) {
+                x = Math.floor(Math.random() * GRID_SIZE) + GRID_MIN;
+                y = Math.floor(Math.random() * GRID_SIZE) + GRID_MIN;
+                
+                let idx = playerBoard.toIndex(x, y);
+                i = idx.i; j = idx.j;
+                
+                if (playerBoard.shots[i][j] === 0) {
+                    searching = false;
+                }
+            }
+
+            const result = playerBoard.receiveShot(x, y);
+            updateScore();
+            renderAll();
+
+            if (result.result === 'HIT') {
+                if (playerBoard.allShipsSunk()) {
+                    endGame(false);
+                } else {
+                    statusText.textContent = `Inimigo acertou em (${x},${y})! Ele joga de novo.`;
+                    setTimeout(enemyTurn, 1000);
+                }
+            } else {
+                gameState = 'PLAYER_TURN';
+                statusText.textContent = `Inimigo atirou em (${x},${y}) - Água! Sua vez.`;
+                statusText.className = "text-2xl font-bold text-blue-400";
+            }
+        }
+
+
+        function updateScore() {
+            document.getElementById('playerHits').textContent = enemyBoard.getHitsCount();
+            document.getElementById('enemyHits').textContent = playerBoard.getHitsCount();
+        }
+
+        function endGame(playerWon) {
+            gameState = 'GAME_OVER';
+            statusText.textContent = playerWon ? "Você Venceu a Batalha!" : "Frota Destruída. Você Perdeu!";
+            statusText.className = `text-3xl font-bold ${playerWon ? 'text-green-500' : 'text-red-500'}`;
+            
+            if(playerWon) {
+                document.getElementById('enemyOverlay').style.display = 'flex';
+                document.getElementById('enemyOverlay').textContent = "DESTRUÍDO";
+                document.getElementById('enemyOverlay').style.backgroundColor = 'rgba(239, 68, 68, 0.4)';
+            } else {
+                document.getElementById('playerOverlay').style.display = 'flex';
+                document.getElementById('playerOverlay').textContent = "DESTRUÍDO";
+                document.getElementById('playerOverlay').style.backgroundColor = 'rgba(239, 68, 68, 0.4)';
+            }
+            
+            restartBtn.classList.remove('hidden');
+            renderAll();
+        }
+
+        restartBtn.addEventListener('click', initGame);
+
+        function initGame() {
+            playerBoard = new Board();
+            enemyBoard = new Board();
+            gameState = 'SETUP';
+            currentShipIndex = 0;
+            isHorizontal = true;
+            
+            document.getElementById('enemyOverlay').style.display = 'none';
+            document.getElementById('playerOverlay').style.display = 'none';
+            
+            setupControls.classList.remove('hidden');
+            gameStatus.classList.add('hidden');
+            restartBtn.classList.add('hidden');
+            
+            currentShipName.parentElement.style.display = 'block';
+            shipPreview.style.display = 'flex';
+            rotateBtn.style.display = 'flex';
+            randomizeBtn.style.display = 'block';
+            startGameBtn.disabled = true;
+            startGameBtn.classList.remove('animate-pulse');
+            setupInstructions.textContent = "Posicione sua frota no plano.";
+            
+            updateSetupUI();
+            updateScore();
+            renderAll();
+        }
+
+        // Initialize on load
+        window.onload = () => {
+            initGame();
+        };
+
+    </script>
+</body>
+</html>
